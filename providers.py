@@ -1,8 +1,6 @@
 """Bốn provider cùng một interface. Không chứa agent loop."""
 import json
 import os
-import re
-import time
 import urllib.error
 import urllib.request
 
@@ -10,57 +8,20 @@ CONFIG = {
     'openai': ('OPENAI_API_KEY', 'https://api.openai.com/v1/chat/completions'),
     'gemini': ('GEMINI_API_KEY', 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions'),
     'openrouter': ('OPENROUTER_API_KEY', 'https://openrouter.ai/api/v1/chat/completions'),
-    'groq': ('GROQ_API_KEY', 'https://api.groq.com/openai/v1/chat/completions'),
     'anthropic': ('ANTHROPIC_API_KEY', 'https://api.anthropic.com/v1/messages'),
 }
 
 
 def post_json(url, headers, payload):
-    req = urllib.request.Request(
-        url,
-        data=json.dumps(payload).encode(),
-        headers={
-            'Content-Type': 'application/json',
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) ReactLoopAgent/1.0',
-            **headers,
-        },
-    )
-    for attempt in range(4):
-        try:
-            with urllib.request.urlopen(req, timeout=60) as response:
-                return json.load(response)
-        except urllib.error.HTTPError as exc:
-            # Provider error messages help distinguish auth, model access, and
-            # rate limits. Never include request headers or credentials.
-            try:
-                body = json.loads(exc.read().decode('utf-8', 'replace'))
-                error = body.get('error', {})
-                detail = error.get('message', '')
-                failed = error.get('failed_generation')
-                if failed:
-                    detail = f'{detail} ({str(failed)[:200]})'
-            except (ValueError, AttributeError):
-                detail = ''
-            if isinstance(detail, str):
-                for secret in (headers.get('Authorization', '').replace('Bearer ', ''),
-                               headers.get('x-api-key', '')):
-                    if secret:
-                        detail = detail.replace(secret, '[REDACTED]')
-            # Groq returns a short retry hint for per-minute token limits.
-            if exc.code == 429 and attempt < 3:
-                retry = exc.headers.get('retry-after', '')
-                delay = float(retry) if retry and retry.replace('.', '', 1).isdigit() else None
-                if delay is None and detail:
-                    match = re.search(r'try again in (\d+(?:\.\d+)?)\s*(ms|s)', detail, re.I)
-                    if match:
-                        delay = float(match.group(1)) / (1000 if match.group(2).lower() == 'ms' else 1)
-                if delay is not None and 0 <= delay <= 10:
-                    time.sleep(delay + 0.1)
-                    continue
-            suffix = f': {detail[:300]}' if detail else ''
-            raise RuntimeError(f'Provider trả HTTP {exc.code}{suffix}') from exc
-        except urllib.error.URLError as exc:
-            raise RuntimeError(f'Không kết nối được provider: {exc.reason}') from exc
+    req = urllib.request.Request(url, data=json.dumps(payload).encode(), headers={'Content-Type': 'application/json', **headers})
+    try:
+        with urllib.request.urlopen(req, timeout=60) as response:
+            return json.load(response)
+    except urllib.error.HTTPError as exc:
+        # Do not print response bodies: they may contain account or request data.
+        raise RuntimeError(f'Provider trả HTTP {exc.code}; kiểm tra model, key và quota.') from exc
+    except urllib.error.URLError as exc:
+        raise RuntimeError(f'Không kết nối được provider: {exc.reason}') from exc
 
 
 class Provider:
@@ -86,9 +47,6 @@ class Provider:
         payload = {'model': self.model, 'messages': messages}
         if schemas:
             payload['tools'] = schemas
-            if self.name == 'openrouter':
-                payload['tool_choice'] = 'auto'
-                payload['parallel_tool_calls'] = False
         data = post_json(self.url, {'Authorization': f'Bearer {self.key}'}, payload)
         choice = data['choices'][0]
         message = choice['message']

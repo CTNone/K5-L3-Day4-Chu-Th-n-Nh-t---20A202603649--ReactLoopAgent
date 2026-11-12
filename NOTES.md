@@ -41,6 +41,8 @@ Các điểm `eval_before` đã chấm: E1–E6 100, A1–A5 100, A6 96, A7 100.
 
 OpenRouter trả `free-models-per-day` khi hết hạn mức. Case A4 của `eval_after` được judge bởi `openrouter/free` sau khi Dots judge trả HTTP 400; các case khác dùng Dots. Vì vậy kết quả after không hoàn toàn đồng nhất về judge. Không sửa dataset, fixtures, scenarios hoặc grading để làm case pass; không dùng tài khoản/key khác để vượt hạn mức free.
 
+**Tái lập:** Trong quá trình chạy Dots, adapter request tạm thời gửi `tool_choice=auto` và tắt parallel tool calls để model trả tool call hợp lệ. `providers.py` đã được khôi phục nguyên bản theo cấu trúc nộp bài; vì vậy cần chạy lại eval khi quota cho phép để xác nhận với adapter gốc.
+
 ## 5. Giới hạn và tình trạng nộp
 
 - Điểm judge là ước lượng; đọc `expected`, trace và lý do chấm trước khi diễn giải.
